@@ -3,7 +3,12 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.27703.2018
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITICertInstaller", "ITICertInstaller\ITICertInstaller.csproj", "{C22FA746-778E-4806-BD82-F4E0FCE53763}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinCertInstaller", "ITICertInstaller\WinCertInstaller.csproj", "{C22FA746-778E-4806-BD82-F4E0FCE53763}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F9C2C0C5-A048-4FFC-BB36-EEADC2EF47B3}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
