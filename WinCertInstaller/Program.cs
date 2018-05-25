@@ -3,6 +3,7 @@ using System.Net;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography.X509Certificates;
+using System.Linq;
 
 namespace WinCertInstaller
 {
@@ -24,11 +25,10 @@ namespace WinCertInstaller
             return stream;
         }
 
-        static X509Certificate2Collection GetITICertificates()
+        static X509Certificate2Collection GetZIPCertificates(String url)
         {
             X509Certificate2Collection certCollection = new X509Certificate2Collection();
-            String url = "http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip";
-            Console.WriteLine("ITI: Getting certificates from {0} please wait.", url);
+            Console.WriteLine("Getting certificates from {0} please wait.", url);
             Stream stream = DownloadFile(url);
 
             if (stream != null) {
@@ -43,37 +43,77 @@ namespace WinCertInstaller
                     cert.Import(ms.ToArray());
                     certCollection.Add(cert);
                 }
-                Console.WriteLine("ITI: {0} certificates found.", certCollection.Count);
+                Console.WriteLine("{0} certificates found.", certCollection.Count);
             }
             return certCollection;
         }
 
-        static X509Certificate2Collection GetMPFCertificates()
+        static X509Certificate2Collection GetP7BCertificates(String url)
         {
             X509Certificate2Collection certCollection = new X509Certificate2Collection();
-            String url = "http://repositorio.acinterna.mpf.mp.br/ejbca/downloads/ACIMPF-cadeia-completa.p7b";
-            Console.WriteLine("MPF: Getting certificates from {0} please wait.", url);
+            Console.WriteLine("Getting certificates from {0} please wait.", url);
             Stream stream = DownloadFile(url);
             if (stream != null) { 
                 MemoryStream ms = new MemoryStream();
                 stream.CopyTo(ms);
                 certCollection.Import(ms.ToArray());
-                Console.WriteLine("MPF: {0} certificates found.", certCollection.Count);
+                Console.WriteLine("{0} certificates found.", certCollection.Count);
             }
             return certCollection;
         }
 
-        static void InstallCertificates(String name, X509Store store, X509Certificate2Collection certificates) {
+        static void Add(X509Certificate2Collection certificates, StoreName storeName, StoreLocation location)
+        {
+            X509Store store = new X509Store(storeName, location);
+            store.Open(OpenFlags.MaxAllowed);
+            Console.WriteLine("Installing certificates.");
+            store.AddRange(certificates);
+            Console.WriteLine("Added {0} certificates to {1}.", certificates.Count, storeName);
+            store.Close();
+        }
+
+        static void InstallCertificates(X509Certificate2Collection certificates) {
+            X509Certificate2Collection CACertificates = new X509Certificate2Collection();
+            X509Certificate2Collection CAIntermediateCertificates = new X509Certificate2Collection();
+
+            foreach (X509Certificate2 cert in certificates)
+            {
+                bool isCA = IsCertificateAuthority(cert);
+                bool isSelfSigned = IsSelfSigned(cert);
+                if (isCA)
+                {
+                    if (isSelfSigned)
+                    {
+                        CACertificates.Add(cert);
+                    }
+                    else
+                    {
+                        CAIntermediateCertificates.Add(cert);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("{0} is not a CA. Ignoring.", cert.Subject);
+                }
+            }
+
             try
             {
-                if (certificates.Count > 0)
+                if (CACertificates.Count > 0)
                 {
-                    Console.WriteLine("{0}: Installing certificates.", name);
-                    store.AddRange(certificates);
-                    Console.WriteLine("{0}: Added {1} certificates to {2}.", name, certificates.Count, StoreName.Root);
+                    Add(CACertificates, StoreName.Root, StoreLocation.LocalMachine);
                 } else
                 {
-                    Console.WriteLine("{0}: No certificates to import.", name);
+                    Console.WriteLine("No CA certificates to import.");
+                }
+
+                if (CAIntermediateCertificates.Count > 0)
+                {
+                    Add(CAIntermediateCertificates, StoreName.CertificateAuthority, StoreLocation.LocalMachine);
+                }
+                else
+                {
+                    Console.WriteLine("No Intermediate CA certificates to import.");
                 }
             }
             catch (System.Security.Cryptography.CryptographicException ex)
@@ -82,6 +122,27 @@ namespace WinCertInstaller
                 System.Environment.Exit(-1);
             }
 
+        }
+
+        public static bool IsCertificateAuthority(X509Certificate2 certificate)
+        {           
+            foreach (X509BasicConstraintsExtension basic_constraints in certificate.Extensions.OfType<X509BasicConstraintsExtension>())
+            {
+                if (basic_constraints.CertificateAuthority)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static bool IsSelfSigned(X509Certificate2 certificate)
+        {
+            if (certificate.Issuer == certificate.Subject)
+            {
+                return true;
+            }
+            return false;
         }
 
         static void Main(string[] args)
@@ -100,23 +161,20 @@ namespace WinCertInstaller
                 }
             }
 
-            X509Store store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
-            store.Open(OpenFlags.MaxAllowed);
-
             Console.WriteLine("====================== ITI ======================");
-            X509Certificate2Collection ITIcertificates = GetITICertificates();
+            X509Certificate2Collection ITIcertificates = GetZIPCertificates("http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip");
             if (ITIcertificates.Count > 0) {
-                InstallCertificates("ITI", store, ITIcertificates);
+                InstallCertificates(ITIcertificates);
             }
 
             Console.WriteLine("====================== MPF ======================");
-            X509Certificate2Collection MPFCertificates = GetMPFCertificates();
+            X509Certificate2Collection MPFCertificates = GetP7BCertificates("http://repositorio.acinterna.mpf.mp.br/ejbca/downloads/ACIMPF-cadeia-completa.p7b");
+
             if (MPFCertificates.Count > 0)
             {
-                InstallCertificates("MPF", store, MPFCertificates);
+                InstallCertificates(MPFCertificates);
             }
             
-            store.Close();
             Console.WriteLine("=================================================");
             Console.WriteLine("Finished!");
 
