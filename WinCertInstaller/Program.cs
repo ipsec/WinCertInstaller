@@ -168,7 +168,7 @@ namespace WinCertInstaller
             }
 
             Console.WriteLine("====================== MPF ======================");
-            X509Certificate2Collection MPFCertificates = GetP7BCertificates("http://repositorio.acinterna.mpf.mp.br/ejbca/downloads/ACIMPF-cadeia-completa.p7b");
+            X509Certificate2Collection MPFCertificates = GetP7BCertificates("http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b");
 
             if (MPFCertificates.Count > 0)
             {
