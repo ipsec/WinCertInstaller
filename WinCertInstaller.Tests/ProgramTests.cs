@@ -4,7 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 using Xunit;
 using WinCertInstaller.Models;
 using WinCertInstaller.Services;
-using Microsoft.Extensions.Logging.Abstractions;
+using WinCertInstaller.Logging;
 
 namespace WinCertInstaller.Tests
 {
@@ -56,7 +56,7 @@ namespace WinCertInstaller.Tests
             request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
 
             using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(365));
-            var validator = new CertificateValidator(NullLogger<CertificateValidator>.Instance);
+            var validator = new CertificateValidator(new SimpleLogger<CertificateValidator>());
 
             Assert.True(validator.IsCertificateAuthority(certificate));
             Assert.True(validator.IsSelfSigned(certificate));
