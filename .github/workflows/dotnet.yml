@@ -38,17 +38,16 @@ jobs:
       
     - name: Upload Artifact
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: WinCertInstaller-Win64
         path: ./publish/
 
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          ./publish/WinCertInstaller.exe
-          ./publish/appsettings.json
+      shell: pwsh
+      run: |
+        $tag = $env:GITHUB_REF -replace 'refs/tags/', ''
+        gh release create $tag ./publish/WinCertInstaller.exe ./publish/appsettings.json --title "Release $tag" --notes "Automated release for version $tag"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
