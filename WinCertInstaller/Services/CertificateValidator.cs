@@ -24,7 +24,7 @@ namespace WinCertInstaller.Services
         }
 
         public bool IsCertificateAuthority(X509Certificate2 certificate)
-        {           
+        {
             return certificate.Extensions.OfType<X509BasicConstraintsExtension>().Any(ext => ext.CertificateAuthority);
         }
 

@@ -137,12 +137,7 @@ namespace WinCertInstaller
                 Console.WriteLine("=================================================");
                 Console.WriteLine("Finished!");
 
-                if (!quiet)
-                {
-                    Console.WriteLine("To run in quiet mode use -q parameter.");
-                    Console.WriteLine("Press any key to exit.");
-                    Console.ReadKey(true);
-                }
+                WaitForKeyPress(quiet);
 
                 return 0;
             }
@@ -150,12 +145,25 @@ namespace WinCertInstaller
             {
                 Console.WriteLine("Error: {0}", ex.Message);
                 PrintUsage();
+                WaitForKeyPress(quiet: false);
                 return -1;
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Unexpected error: {0}", ex.Message);
+                WaitForKeyPress(quiet: false);
                 return -1;
+            }
+        }
+
+        static void WaitForKeyPress(bool quiet)
+        {
+            if (!quiet)
+            {
+                Console.WriteLine();
+                Console.WriteLine("To run without this prompt use -q parameter.");
+                Console.WriteLine("Press any key to exit.");
+                Console.ReadKey(true);
             }
         }
     }

@@ -16,7 +16,7 @@ namespace WinCertInstaller.Services
             Timeout = TimeSpan.FromSeconds(30)
         };
 
-        private async Task<Stream?> DownloadFileAsync(string url, CancellationToken cancellationToken = default, int maxAttempts = 3, TimeSpan? delayBetweenAttempts = null)
+        private async Task<MemoryStream?> DownloadFileAsync(string url, CancellationToken cancellationToken = default, int maxAttempts = 3, TimeSpan? delayBetweenAttempts = null)
         {
             delayBetweenAttempts ??= TimeSpan.FromSeconds(2);
 
@@ -26,7 +26,11 @@ namespace WinCertInstaller.Services
                 {
                     using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                     response.EnsureSuccessStatusCode();
-                    return await response.Content.ReadAsStreamAsync(cancellationToken);
+                    
+                    var memoryStream = new MemoryStream();
+                    await response.Content.CopyToAsync(memoryStream, cancellationToken);
+                    memoryStream.Position = 0;
+                    return memoryStream;
                 }
                 catch (OperationCanceledException)
                 {
@@ -53,8 +57,8 @@ namespace WinCertInstaller.Services
         {
             X509Certificate2Collection certCollection = new X509Certificate2Collection();
             Console.WriteLine("Getting certificates from {0} please wait.", url);
-            
-            using Stream? stream = await DownloadFileAsync(url, cancellationToken);
+
+            using MemoryStream? stream = await DownloadFileAsync(url, cancellationToken);
 
             if (stream != null)
             {
@@ -90,16 +94,27 @@ namespace WinCertInstaller.Services
         {
             X509Certificate2Collection certCollection = new X509Certificate2Collection();
             Console.WriteLine("Getting certificates from {0} please wait.", url);
-            
-            using Stream? stream = await DownloadFileAsync(url, cancellationToken);
-            
+
+            using MemoryStream? stream = await DownloadFileAsync(url, cancellationToken);
+
             if (stream != null)
             {
-                using MemoryStream ms = new MemoryStream();
-                await stream.CopyToAsync(ms, cancellationToken);
+                byte[] rawBytes = stream.ToArray();
+                string text = System.Text.Encoding.UTF8.GetString(rawBytes);
+
+                // Check if the PKCS#7 is PEM encoded and decode it to raw DER format
+                if (text.Contains("-----BEGIN PKCS7-----"))
+                {
+                    string base64 = text.Replace("-----BEGIN PKCS7-----", "")
+                                        .Replace("-----END PKCS7-----", "")
+                                        .Replace("\r", "")
+                                        .Replace("\n", "")
+                                        .Trim();
+                    rawBytes = Convert.FromBase64String(base64);
+                }
 
                 var signedCms = new SignedCms();
-                signedCms.Decode(ms.ToArray());
+                signedCms.Decode(rawBytes);
 
                 foreach (var cert in signedCms.Certificates)
                 {

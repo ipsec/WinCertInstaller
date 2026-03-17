@@ -46,7 +46,6 @@ namespace WinCertInstaller.Services
                 if (IsCertificateInStore(certificate, store))
                 {
                     skipped++;
-                    Console.WriteLine("Skipped already installed certificate: {0}", certificate.Subject);
                     continue;
                 }
 
@@ -89,7 +88,7 @@ namespace WinCertInstaller.Services
                 }
                 else
                 {
-                    Console.WriteLine("{0} is not a CA. Ignoring.", cert.Subject);
+                    // Ignora certificados que não são identificados como Autoridade Certificadora
                 }
             }
 
