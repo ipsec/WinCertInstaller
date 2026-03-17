@@ -1,15 +1,19 @@
 using System;
 using System.Security.Cryptography.X509Certificates;
 
+using Microsoft.Extensions.Logging;
+
 namespace WinCertInstaller.Services
 {
     public class CertificateInstaller : ICertificateInstaller
     {
         private readonly ICertificateValidator _validator;
+        private readonly ILogger<CertificateInstaller> _logger;
 
-        public CertificateInstaller(ICertificateValidator validator)
+        public CertificateInstaller(ICertificateValidator validator, ILogger<CertificateInstaller> logger)
         {
             _validator = validator;
+            _logger = logger;
         }
 
         private bool IsCertificateInStore(X509Certificate2 certificate, X509Store store)
@@ -29,7 +33,7 @@ namespace WinCertInstaller.Services
             using var store = new X509Store(storeName, location);
             store.Open(dryRun ? OpenFlags.ReadOnly : OpenFlags.ReadWrite);
 
-            Console.WriteLine("Installing certificates into {0}.", storeName);
+            _logger.LogInformation("Installing certificates into the {StoreName} store...", storeName);
 
             int added = 0;
             int skipped = 0;
@@ -51,17 +55,19 @@ namespace WinCertInstaller.Services
 
                 if (dryRun)
                 {
+                    _logger.LogInformation("Dry-run: Would add {Subject} to {StoreName}", certificate.Subject, storeName);
                     added++;
                     continue;
                 }
 
                 store.Add(certificate);
+                _logger.LogInformation("Added: {Subject} to {StoreName}", certificate.Subject, storeName);
                 added++;
             }
 
-            Console.WriteLine("Added {0} certificates to {1}.", added, storeName);
-            if (skipped > 0) Console.WriteLine("Skipped {0} already installed certificate(s).", skipped);
-            if (invalid > 0) Console.WriteLine("Ignored {0} invalid certificate(s).", invalid);
+            _logger.LogInformation("Successfully processed {Added} certificate(s) for {StoreName}.", added, storeName);
+            if (skipped > 0) _logger.LogInformation("Skipped {Skipped} certificate(s) already present in the store.", skipped);
+            if (invalid > 0) _logger.LogWarning("Ignored {Invalid} invalid or ineligible certificate(s).", invalid);
 
             store.Close();
         }
@@ -100,7 +106,7 @@ namespace WinCertInstaller.Services
                 }
                 else
                 {
-                    Console.WriteLine("No CA certificates to import.");
+                    _logger.LogInformation("No CA certificates to import.");
                 }
 
                 if (caIntermediateCertificates.Count > 0)
@@ -109,13 +115,13 @@ namespace WinCertInstaller.Services
                 }
                 else
                 {
-                    Console.WriteLine("No Intermediate CA certificates to import.");
+                    _logger.LogInformation("No Intermediate CA certificates to import.");
                 }
             }
             catch (System.Security.Cryptography.CryptographicException ex)
             {
-                Console.WriteLine("Erro ao acessar os repositórios do Windows: {0}", ex.Message);
-                Console.WriteLine("DICA: Certifique-se de executar este programa como 'Administrador' para instalar certificados na máquina local.");
+                _logger.LogError(ex, "Error accessing Windows certificate stores: {Message}", ex.Message);
+                _logger.LogWarning("HINT: Ensure you are running this application as 'Administrator' to manage LocalMachine certificates.");
             }
         }
     }

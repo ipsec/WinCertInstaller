@@ -7,14 +7,22 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Logging;
+
 namespace WinCertInstaller.Services
 {
     public class CertificateDownloader : ICertificateDownloader
     {
+        private readonly ILogger<CertificateDownloader> _logger;
         private static readonly HttpClient HttpClient = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
+
+        public CertificateDownloader(ILogger<CertificateDownloader> logger)
+        {
+            _logger = logger;
+        }
 
         private async Task<MemoryStream?> DownloadFileAsync(string url, CancellationToken cancellationToken = default, int maxAttempts = 3, TimeSpan? delayBetweenAttempts = null)
         {
@@ -34,19 +42,18 @@ namespace WinCertInstaller.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    Console.WriteLine("Download canceled.");
+                    _logger.LogInformation("Download canceled.");
                     return null;
                 }
                 catch (Exception ex) when (attempt < maxAttempts)
                 {
                     if (cancellationToken.IsCancellationRequested) return null;
-                    Console.WriteLine("WARNING: attempt {0} failed for {1}: {2}", attempt, url, ex.Message);
+                    _logger.LogWarning(ex, "Attempt {Attempt} failed for {Url}: {Message}", attempt, url, ex.Message);
                     await Task.Delay(delayBetweenAttempts.Value, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("ERROR: Unable to download certificates from {0} after {1} attempts.", url, attempt);
-                    Console.WriteLine("ERROR: {0}", ex.Message);
+                    _logger.LogError(ex, "Unable to download certificates from {Url} after {Attempt} attempts. Error: {Message}", url, attempt, ex.Message);
                 }
             }
 
@@ -56,7 +63,7 @@ namespace WinCertInstaller.Services
         public async Task<X509Certificate2Collection> GetZIPCertificatesAsync(string url, CancellationToken cancellationToken = default)
         {
             X509Certificate2Collection certCollection = new X509Certificate2Collection();
-            Console.WriteLine("Getting certificates from {0} please wait.", url);
+            _logger.LogInformation("Downloading certificates from {Url}. Please wait...", url);
 
             using MemoryStream? stream = await DownloadFileAsync(url, cancellationToken);
 
@@ -82,10 +89,10 @@ namespace WinCertInstaller.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("WARNING: Failed to load certificate from zip entry {0}: {1}", certificate.FullName, ex.Message);
+                        _logger.LogWarning(ex, "Failed to load certificate from zip entry {FullName}: {Message}", certificate.FullName, ex.Message);
                     }
                 }
-                Console.WriteLine("{0} certificates found.", certCollection.Count);
+                _logger.LogInformation("Found {Count} certificate(s) in ZIP archive.", certCollection.Count);
             }
             return certCollection;
         }
@@ -93,7 +100,7 @@ namespace WinCertInstaller.Services
         public async Task<X509Certificate2Collection> GetP7BCertificatesAsync(string url, CancellationToken cancellationToken = default)
         {
             X509Certificate2Collection certCollection = new X509Certificate2Collection();
-            Console.WriteLine("Getting certificates from {0} please wait.", url);
+            _logger.LogInformation("Downloading certificates from {Url}. Please wait...", url);
 
             using MemoryStream? stream = await DownloadFileAsync(url, cancellationToken);
 
@@ -121,7 +128,7 @@ namespace WinCertInstaller.Services
                     certCollection.Add(cert);
                 }
 
-                Console.WriteLine("{0} certificates found.", certCollection.Count);
+                _logger.LogInformation("Extracted {Count} certificate(s) from P7B/PKCS7 payload.", certCollection.Count);
             }
             return certCollection;
         }

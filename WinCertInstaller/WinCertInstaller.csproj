@@ -11,10 +11,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.5" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="README.md" CopyToOutputDirectory="Never" />
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

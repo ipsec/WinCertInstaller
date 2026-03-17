@@ -1,22 +1,29 @@
 using System;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.Logging;
 
 namespace WinCertInstaller.Services
 {
     public class CertificateValidator : ICertificateValidator
     {
+        private readonly ILogger<CertificateValidator> _logger;
+
+        public CertificateValidator(ILogger<CertificateValidator> logger)
+        {
+            _logger = logger;
+        }
         public bool IsCertificateValidForInstall(X509Certificate2 certificate)
         {
             if (certificate.NotBefore > DateTime.UtcNow)
             {
-                Console.WriteLine("Certificate {0} not active yet. NotBefore={1}", certificate.Subject, certificate.NotBefore);
+                _logger.LogWarning("Certificate {Subject} not active yet. NotBefore={NotBefore}", certificate.Subject, certificate.NotBefore);
                 return false;
             }
 
             if (certificate.NotAfter < DateTime.UtcNow)
             {
-                Console.WriteLine("Certificate {0} expired. NotAfter={1}", certificate.Subject, certificate.NotAfter);
+                _logger.LogWarning("Certificate {Subject} expired. NotAfter={NotAfter}", certificate.Subject, certificate.NotAfter);
                 return false;
             }
 

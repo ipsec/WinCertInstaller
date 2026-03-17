@@ -1,56 +1,87 @@
-# WinCertInstaller
+# WinCertInstaller 🛡️
 
 [![.NET](https://github.com/fernandoribeiro/WinCertInstaller/actions/workflows/dotnet.yml/badge.svg)](https://github.com/fernandoribeiro/WinCertInstaller/actions/workflows/dotnet.yml)
 
-This repository contains a C# (.NET 10) application which downloads and installs the official Root and Intermediate Certificates from **ITI (ICP-Brasil)** and **MPF** into the Windows Trusted Root Store.
+WinCertInstaller is an enterprise-grade C# (.NET 10) utility designed to automate the download and installation of official Root and Intermediate Certificates from **ITI (ICP-Brasil)** and **MPF** into the Windows Certificate Store.
 
-*⚠️ Needs **Administrator privileges** to run, as it writes directly to the `LocalMachine` X509 Store.*
+> [!IMPORTANT]
+> **Administrator Privileges Required**: This application requires elevated privileges to write certificates to the `LocalMachine` X509 store. It includes an `app.manifest` to automatically request UAC elevation if not already running as Administrator.
 
-## Features
+## 🚀 Key Features
 
-* **Automated Downloads**: Fetches the latest `.zip` (ITI) and `.p7b` (MPF) certificate bundles.
-* **Smart Validation**: Validates expiration dates, ensures the certificate is active, and separates Self-Signed (Root) from Intermediate CAs.
-* **Resilience**: Features automatic retries and cancellation tokens for network requests.
-* **Idempotency**: Skips already installed certificates without throwing duplicate errors.
-* **Dry-Run Mode**: Allows testing the extraction and validation process without writing anything to the OS registry.
+*   **Automated Certificate Fetching**: Downloads the latest `.zip` (ITI) and `.p7b` (MPF) bundles directly from official repositories.
+*   **Robust Decoding**: Handles various formats, including **PEM-encoded PKCS#7** payloads (MPF) and nested ZIP archives (ITI).
+*   **Intelligent Validation**: 
+    *   Filters for Certificate Authorities (CA).
+    *   Distinguishes between Root CAs (installed in `Trusted Root`) and Intermediate CAs (installed in `Intermediate Certification Authorities`).
+    *   Checks for expiration and activation dates.
+*   **Idempotency**: Detects and skips certificates already present in the store to avoid duplication.
+*   **Modern CLI Experience**: Features clean, color-coded console output using a custom `ILogger` formatter.
+*   **Dry-Run Mode**: Validate the entire download and extraction process without modifying the system state.
 
-## Architecture & SOLID
+## 🏗️ Architecture (SOLID & Enterprise)
 
-The project is structured into clear responsibilities:
-* `Models/`: Data structures and Enums (e.g., `CertSource`).
-* `Configuration/`: Constant settings and URLs.
-* `Services/`: Core business logic broken down into:
-  * `ICertificateDownloader`: Handles HTTP streams and archive extractions.
-  * `ICertificateValidator`: Enforces cryptographic rules.
-  * `ICertificateInstaller`: Interfaces with the Windows `X509Store`.
+The application has been refactored to follow modern .NET best practices:
+*   **Microsoft.Extensions.Hosting**: Uses the Generic Host pattern for dependency injection, logging, and configuration management.
+*   **Dynamic Configuration**: All certificate URLs and settings are managed via `appsettings.json`.
+*   **Structured Logging**: Utilizes `ILogger<T>` for clean, maintainable logging that can be easily redirected to cloud providers or files.
+*   **Dependency Injection**: Decoupled services for Downloading, Validation, and Installation, making the codebase highly testable and maintainable.
 
-## Usage
+## 💻 Compatibility
 
-You can run the application directly from the command line:
+*   **Runtime**: .NET 10.0+ (Windows-specific payload).
+*   **Operating Systems**: 
+    *   **Windows 10 / 11** (Fully supported, native target).
+    *   **Windows Server 2016 / 2019 / 2022**.
+    *   *Note: Requires administrator access for LocalMachine store operations.*
+
+## 🛠️ Usage
 
 ```console
 Usage: WinCertInstaller [options]
+
 Options:
-  --iti        Install certificates from ITI
-  --mpf        Install certificates from MPF
-  --all        Install certificates from ITI and MPF (default)
-  --dry-run    Run without writing certificates to store
-  -q           Quiet mode (no pause at exit)
+  --iti        Install ITI certificates
+  --mpf        Install MPF certificates
+  --all        Install both ITI and MPF certificates (default)
+  --dry-run    Simulate installation without writing to the store
+  -q           Quiet mode (suppress exit prompt)
   -h,--help    Show this help message
 ```
 
-*Example: Testing ITI extraction without installing*  
+### Examples
+
+**Standard Installation (All Sources):**
+```powershell
+WinCertInstaller.exe
+```
+
+**Dry-Run of ITI Source:**
 ```powershell
 WinCertInstaller.exe --iti --dry-run
 ```
 
-## Building and Testing
-
-To compile the application and run its unit tests:
-
+**Quiet Installation (Script Mode):**
 ```powershell
-dotnet build WinCertInstaller\WinCertInstaller.csproj
-dotnet test WinCertInstaller.Tests\WinCertInstaller.Tests.csproj
+WinCertInstaller.exe --all -q
 ```
 
-*Use at your own risk. Feel free to make pull-requests :)*
+## 🧪 Development
+
+### Configuration
+Edit `appsettings.json` to update certificate URLs or tune logging behavior without recompiling.
+
+### Build & Test
+```powershell
+# Restore and build the solution
+dotnet build WinCertInstaller.sln
+
+# Run unit tests
+dotnet test WinCertInstaller.sln
+```
+
+### CI/CD
+A GitHub Actions workflow is included (`.github/workflows/dotnet.yml`) that automatically builds, tests, and publishes a self-contained, single-file executable on every push to `main`/`master`.
+
+---
+*Maintained with ❤️ for secure Windows environments.*

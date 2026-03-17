@@ -5,6 +5,12 @@ using System.Security.Cryptography.X509Certificates;
 using WinCertInstaller.Models;
 using WinCertInstaller.Configuration;
 using WinCertInstaller.Services;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
+using WinCertInstaller.Logging;
 
 namespace WinCertInstaller
 {
@@ -14,11 +20,11 @@ namespace WinCertInstaller
         {
             Console.WriteLine("Usage: WinCertInstaller [options]");
             Console.WriteLine("Options:");
-            Console.WriteLine("  --iti        Install certificates from ITI");
-            Console.WriteLine("  --mpf        Install certificates from MPF");
-            Console.WriteLine("  --all        Install certificates from ITI and MPF (default)");
-            Console.WriteLine("  --dry-run    Run without writing certificates to store");
-            Console.WriteLine("  -q           Quiet mode (no pause at exit)");
+            Console.WriteLine("  --iti        Install ITI certificates");
+            Console.WriteLine("  --mpf        Install MPF certificates");
+            Console.WriteLine("  --all        Install both ITI and MPF certificates (default)");
+            Console.WriteLine("  --dry-run    Simulate installation without writing to the store");
+            Console.WriteLine("  -q           Quiet mode (suppress exit prompt)");
             Console.WriteLine("  -h,--help    Show this help message");
             Console.WriteLine("Example: WinCertInstaller --iti --dry-run");
         }
@@ -104,18 +110,35 @@ namespace WinCertInstaller
 
                 if (dryRun)
                 {
-                    Console.WriteLine("Dry run mode enabled: no certificates will be added to the store.");
+                    Console.WriteLine("Dry run enabled: No changes will be made to the certificate store.");
                 }
 
-                // Dependency Injection Composition Root
-                ICertificateDownloader downloader = new CertificateDownloader();
-                ICertificateValidator validator = new CertificateValidator();
-                ICertificateInstaller installer = new CertificateInstaller(validator);
+                var host = Host.CreateDefaultBuilder(args)
+                    .ConfigureLogging(logging =>
+                    {
+                        logging.ClearProviders();
+                        logging.AddConsole(options => options.FormatterName = "CleanLayout")
+                               .AddConsoleFormatter<CleanConsoleFormatter, ConsoleFormatterOptions>();
+                    })
+                    .ConfigureServices((context, services) =>
+                    {
+                        services.Configure<AppSettings>(context.Configuration.GetSection(AppSettings.Position));
+                        services.AddTransient<ICertificateDownloader, CertificateDownloader>();
+                        services.AddTransient<ICertificateValidator, CertificateValidator>();
+                        services.AddTransient<ICertificateInstaller, CertificateInstaller>();
+                    })
+                    .Build();
+
+                var downloader = host.Services.GetRequiredService<ICertificateDownloader>();
+                var validator = host.Services.GetRequiredService<ICertificateValidator>();
+                var installer = host.Services.GetRequiredService<ICertificateInstaller>();
+                var appSettings = host.Services.GetRequiredService<IOptions<AppSettings>>().Value;
+                var logger = host.Services.GetRequiredService<ILogger<Program>>();
 
                 if (selectedSources.HasFlag(CertSource.ITI))
                 {
-                    Console.WriteLine("====================== ITI ======================");
-                    X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(AppSettings.ITICertUrl, cts.Token);
+                    logger.LogInformation("====================== ITI ======================");
+                    X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(appSettings.ITICertUrl, cts.Token);
                     if (itiCertificates.Count > 0)
                     {
                         installer.InstallCertificates(itiCertificates, dryRun);
@@ -125,8 +148,8 @@ namespace WinCertInstaller
 
                 if (selectedSources.HasFlag(CertSource.MPF))
                 {
-                    Console.WriteLine("====================== MPF ======================");
-                    X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(AppSettings.MPFCertUrl, cts.Token);
+                    logger.LogInformation("====================== MPF ======================");
+                    X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(appSettings.MPFCertUrl, cts.Token);
                     if (mpfCertificates.Count > 0)
                     {
                         installer.InstallCertificates(mpfCertificates, dryRun);
@@ -134,8 +157,8 @@ namespace WinCertInstaller
                     }
                 }
 
-                Console.WriteLine("=================================================");
-                Console.WriteLine("Finished!");
+                logger.LogInformation("=================================================");
+                logger.LogInformation("Installation process completed.");
 
                 WaitForKeyPress(quiet);
 
@@ -161,8 +184,8 @@ namespace WinCertInstaller
             if (!quiet)
             {
                 Console.WriteLine();
-                Console.WriteLine("To run without this prompt use -q parameter.");
-                Console.WriteLine("Press any key to exit.");
+                Console.WriteLine("Use the -q parameter to run without this prompt.");
+                Console.WriteLine("Press any key to exit...");
                 Console.ReadKey(true);
             }
         }
