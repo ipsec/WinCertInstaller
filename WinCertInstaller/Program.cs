@@ -1,16 +1,12 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Security.Cryptography.X509Certificates;
 using WinCertInstaller.Models;
 using WinCertInstaller.Configuration;
 using WinCertInstaller.Services;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Configuration;
 using WinCertInstaller.Logging;
 
 namespace WinCertInstaller
@@ -114,46 +110,32 @@ namespace WinCertInstaller
                     Console.WriteLine("Dry run enabled: No changes will be made to the certificate store.");
                 }
 
-                var host = Host.CreateDefaultBuilder(args)
-                    .ConfigureAppConfiguration((context, config) =>
-                    {
-                        config.SetBasePath(AppContext.BaseDirectory);
-                        config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                        config.AddEnvironmentVariables();
-                    })
-                    .ConfigureLogging(logging =>
-                    {
-                        logging.ClearProviders();
-                        logging.AddConsole(options => options.FormatterName = "CleanLayout")
-                               .AddConsoleFormatter<CleanConsoleFormatter, ConsoleFormatterOptions>();
-                    })
-                    .ConfigureServices((context, services) =>
-                    {
-                        services.AddOptions<AppSettings>()
-                                .BindConfiguration(AppSettings.Position);
-                        
-                        services.AddTransient<ICertificateDownloader, CertificateDownloader>();
-                        services.AddTransient<ICertificateValidator, CertificateValidator>();
-                        services.AddTransient<ICertificateInstaller, CertificateInstaller>();
-                    })
-                    .Build();
+                // --- Lightweight Initialization ---
+                
+                // 1. Load Configuration
+                AppSettings settings = LoadSettings();
+                
+                // 2. Initialize Loggers
+                var programLogger = new SimpleLogger<Program>();
+                var downloaderLogger = new SimpleLogger<CertificateDownloader>();
+                var validatorLogger = new SimpleLogger<CertificateValidator>();
+                var installerLogger = new SimpleLogger<CertificateInstaller>();
 
-                var downloader = host.Services.GetRequiredService<ICertificateDownloader>();
-                var validator = host.Services.GetRequiredService<ICertificateValidator>();
-                var installer = host.Services.GetRequiredService<ICertificateInstaller>();
-                var appSettings = host.Services.GetRequiredService<IOptions<AppSettings>>().Value;
-                var logger = host.Services.GetRequiredService<ILogger<Program>>();
+                // 3. Initialize Services
+                var validator = new CertificateValidator(validatorLogger);
+                var downloader = new CertificateDownloader(downloaderLogger);
+                var installer = new CertificateInstaller(validator, installerLogger);
 
                 if (selectedSources.HasFlag(CertSource.ITI))
                 {
-                    logger.LogInformation("====================== ITI ======================");
-                    if (string.IsNullOrWhiteSpace(appSettings.ITICertUrl))
+                    programLogger.LogInformation("====================== ITI ======================");
+                    if (string.IsNullOrWhiteSpace(settings.ITICertUrl))
                     {
-                        logger.LogError("Configuration Error: ITICertUrl is empty or missing from appsettings.json. Run with -h for help.");
+                        programLogger.LogError("Configuration Error: ITICertUrl is empty or missing from appsettings.json.");
                     }
                     else
                     {
-                        X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(appSettings.ITICertUrl, cts.Token);
+                        X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(settings.ITICertUrl, cts.Token);
                         if (itiCertificates.Count > 0)
                         {
                             installer.InstallCertificates(itiCertificates, dryRun);
@@ -164,14 +146,14 @@ namespace WinCertInstaller
 
                 if (selectedSources.HasFlag(CertSource.MPF))
                 {
-                    logger.LogInformation("====================== MPF ======================");
-                    if (string.IsNullOrWhiteSpace(appSettings.MPFCertUrl))
+                    programLogger.LogInformation("====================== MPF ======================");
+                    if (string.IsNullOrWhiteSpace(settings.MPFCertUrl))
                     {
-                        logger.LogError("Configuration Error: MPFCertUrl is empty or missing from appsettings.json. Run with -h for help.");
+                        programLogger.LogError("Configuration Error: MPFCertUrl is empty or missing from appsettings.json.");
                     }
                     else
                     {
-                        X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(appSettings.MPFCertUrl, cts.Token);
+                        X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(settings.MPFCertUrl, cts.Token);
                         if (mpfCertificates.Count > 0)
                         {
                             installer.InstallCertificates(mpfCertificates, dryRun);
@@ -180,8 +162,8 @@ namespace WinCertInstaller
                     }
                 }
 
-                logger.LogInformation("=================================================");
-                logger.LogInformation("Installation process completed.");
+                programLogger.LogInformation("=================================================");
+                programLogger.LogInformation("Installation process completed.");
 
                 WaitForKeyPress(quiet);
 
@@ -199,6 +181,39 @@ namespace WinCertInstaller
                 Console.WriteLine("Unexpected error: {0}", ex.Message);
                 WaitForKeyPress(quiet: false);
                 return -1;
+            }
+        }
+
+        private static AppSettings LoadSettings()
+        {
+            string configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            if (!File.Exists(configPath))
+            {
+                return new AppSettings();
+            }
+
+            try
+            {
+                string json = File.ReadAllText(configPath);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                
+                var settings = new AppSettings();
+
+                if (root.TryGetProperty("CertificateSources", out var sources))
+                {
+                    if (sources.TryGetProperty("ITICertUrl", out var itiUrl))
+                        settings.ITICertUrl = itiUrl.GetString() ?? string.Empty;
+                    
+                    if (sources.TryGetProperty("MPFCertUrl", out var mpfUrl))
+                        settings.MPFCertUrl = mpfUrl.GetString() ?? string.Empty;
+                }
+
+                return settings;
+            }
+            catch
+            {
+                return new AppSettings();
             }
         }
 

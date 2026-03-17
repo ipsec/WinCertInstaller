@@ -6,20 +6,16 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Microsoft.Extensions.Logging;
+using WinCertInstaller.Logging;
 
 namespace WinCertInstaller.Services
 {
     public class CertificateDownloader : ICertificateDownloader
     {
-        private readonly ILogger<CertificateDownloader> _logger;
-        private static readonly HttpClient HttpClient = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(30)
-        };
+        private readonly SimpleLogger<CertificateDownloader> _logger;
+        private static readonly HttpClient HttpClient = new HttpClient();
 
-        public CertificateDownloader(ILogger<CertificateDownloader> logger)
+        public CertificateDownloader(SimpleLogger<CertificateDownloader> logger)
         {
             _logger = logger;
         }

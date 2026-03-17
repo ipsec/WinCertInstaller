@@ -1,15 +1,15 @@
 using System;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.Logging;
+using WinCertInstaller.Logging;
 
 namespace WinCertInstaller.Services
 {
     public class CertificateValidator : ICertificateValidator
     {
-        private readonly ILogger<CertificateValidator> _logger;
+        private readonly SimpleLogger<CertificateValidator> _logger;
 
-        public CertificateValidator(ILogger<CertificateValidator> logger)
+        public CertificateValidator(SimpleLogger<CertificateValidator> logger)
         {
             _logger = logger;
         }
