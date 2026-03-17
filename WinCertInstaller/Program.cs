@@ -1,190 +1,193 @@
-﻿using System;
-using System.Net;
-using System.IO;
-using System.IO.Compression;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Security.Cryptography.X509Certificates;
-using System.Linq;
+using WinCertInstaller.Models;
+using WinCertInstaller.Configuration;
+using WinCertInstaller.Services;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
+using WinCertInstaller.Logging;
 
 namespace WinCertInstaller
 {
-    class Program
+    public class Program
     {
-        static Stream DownloadFile(String url)
+        static void PrintUsage()
         {
-            WebClient client = new WebClient();
-            Stream stream = null;
-            try
-            {
-                stream = client.OpenRead(url);
-            } catch (System.Net.WebException ex)
-            {
-                Console.WriteLine("ERROR: Unable to download certificates.");
-                Console.WriteLine("ERROR: {0}", ex.Message);
-            }
-
-            return stream;
+            Console.WriteLine("Usage: WinCertInstaller [options]");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --iti        Install ITI certificates");
+            Console.WriteLine("  --mpf        Install MPF certificates");
+            Console.WriteLine("  --all        Install both ITI and MPF certificates (default)");
+            Console.WriteLine("  --dry-run    Simulate installation without writing to the store");
+            Console.WriteLine("  -q           Quiet mode (suppress exit prompt)");
+            Console.WriteLine("  -h,--help    Show this help message");
+            Console.WriteLine("Example: WinCertInstaller --iti --dry-run");
         }
 
-        static X509Certificate2Collection GetZIPCertificates(String url)
-        {
-            X509Certificate2Collection certCollection = new X509Certificate2Collection();
-            Console.WriteLine("Getting certificates from {0} please wait.", url);
-            Stream stream = DownloadFile(url);
-
-            if (stream != null) {
-                ZipArchive archive = new ZipArchive(stream);
-
-                foreach (ZipArchiveEntry certificate in archive.Entries)
-                {
-                    Stream certStrean = certificate.Open();
-                    MemoryStream ms = new MemoryStream();
-                    X509Certificate2 cert = new X509Certificate2();
-                    certStrean.CopyTo(ms);
-                    cert.Import(ms.ToArray());
-                    certCollection.Add(cert);
-                }
-                Console.WriteLine("{0} certificates found.", certCollection.Count);
-            }
-            return certCollection;
-        }
-
-        static X509Certificate2Collection GetP7BCertificates(String url)
-        {
-            X509Certificate2Collection certCollection = new X509Certificate2Collection();
-            Console.WriteLine("Getting certificates from {0} please wait.", url);
-            Stream stream = DownloadFile(url);
-            if (stream != null) { 
-                MemoryStream ms = new MemoryStream();
-                stream.CopyTo(ms);
-                certCollection.Import(ms.ToArray());
-                Console.WriteLine("{0} certificates found.", certCollection.Count);
-            }
-            return certCollection;
-        }
-
-        static void Add(X509Certificate2Collection certificates, StoreName storeName, StoreLocation location)
-        {
-            X509Store store = new X509Store(storeName, location);
-            store.Open(OpenFlags.MaxAllowed);
-            Console.WriteLine("Installing certificates.");
-            store.AddRange(certificates);
-            Console.WriteLine("Added {0} certificates to {1}.", certificates.Count, storeName);
-            store.Close();
-        }
-
-        static void InstallCertificates(X509Certificate2Collection certificates) {
-            X509Certificate2Collection CACertificates = new X509Certificate2Collection();
-            X509Certificate2Collection CAIntermediateCertificates = new X509Certificate2Collection();
-
-            foreach (X509Certificate2 cert in certificates)
-            {
-                bool isCA = IsCertificateAuthority(cert);
-                bool isSelfSigned = IsSelfSigned(cert);
-                if (isCA)
-                {
-                    if (isSelfSigned)
-                    {
-                        CACertificates.Add(cert);
-                    }
-                    else
-                    {
-                        CAIntermediateCertificates.Add(cert);
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("{0} is not a CA. Ignoring.", cert.Subject);
-                }
-            }
-
-            try
-            {
-                if (CACertificates.Count > 0)
-                {
-                    Add(CACertificates, StoreName.Root, StoreLocation.LocalMachine);
-                } else
-                {
-                    Console.WriteLine("No CA certificates to import.");
-                }
-
-                if (CAIntermediateCertificates.Count > 0)
-                {
-                    Add(CAIntermediateCertificates, StoreName.CertificateAuthority, StoreLocation.LocalMachine);
-                }
-                else
-                {
-                    Console.WriteLine("No Intermediate CA certificates to import.");
-                }
-            }
-            catch (System.Security.Cryptography.CryptographicException ex)
-            {
-                Console.WriteLine("Error: {0}", ex.Message);
-                System.Environment.Exit(-1);
-            }
-
-        }
-
-        public static bool IsCertificateAuthority(X509Certificate2 certificate)
-        {           
-            foreach (X509BasicConstraintsExtension basic_constraints in certificate.Extensions.OfType<X509BasicConstraintsExtension>())
-            {
-                if (basic_constraints.CertificateAuthority)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        public static bool IsSelfSigned(X509Certificate2 certificate)
-        {
-            if (certificate.Issuer == certificate.Subject)
-            {
-                return true;
-            }
-            return false;
-        }
-
-        static void Main(string[] args)
+        public static (CertSource source, bool dryRun, bool quiet, bool showHelp) ParseArguments(string[] args)
         {
             bool quiet = false;
-            if(args.Length > 0)
+            bool dryRun = false;
+            CertSource selectedSources = CertSource.None;
+            bool showHelp = false;
+
+            if (args.Length == 0)
             {
-                if (args[0] == "-q")
+                selectedSources = CertSource.All;
+            }
+            else
+            {
+                foreach (string arg in args)
                 {
-                    quiet = true;
-                } else
-                {
-                    Console.WriteLine("Wrong parameter. Aborting.");
-                    Console.WriteLine("Valid parameters are only: -q");
-                    System.Environment.Exit(-1);
+                    switch (arg.ToLowerInvariant())
+                    {
+                        case "-q":
+                            quiet = true;
+                            break;
+                        case "--dry-run":
+                            dryRun = true;
+                            break;
+                        case "--iti":
+                            selectedSources |= CertSource.ITI;
+                            break;
+                        case "--mpf":
+                            selectedSources |= CertSource.MPF;
+                            break;
+                        case "--all":
+                            selectedSources = CertSource.All;
+                            break;
+                        case "-h":
+                        case "--help":
+                            showHelp = true;
+                            break;
+                        default:
+                            throw new ArgumentException($"Wrong parameter: {arg}");
+                    }
                 }
             }
 
-            Console.WriteLine("====================== ITI ======================");
-            X509Certificate2Collection ITIcertificates = GetZIPCertificates("http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip");
-            if (ITIcertificates.Count > 0) {
-                InstallCertificates(ITIcertificates);
-            }
-
-            Console.WriteLine("====================== MPF ======================");
-            X509Certificate2Collection MPFCertificates = GetP7BCertificates("http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b");
-
-            if (MPFCertificates.Count > 0)
+            if (selectedSources == CertSource.None && !showHelp)
             {
-                InstallCertificates(MPFCertificates);
+                throw new ArgumentException("No certificate source selected.");
             }
-            
-            Console.WriteLine("=================================================");
-            Console.WriteLine("Finished!");
 
+            return (selectedSources, dryRun, quiet, showHelp);
+        }
+
+        static void DisposeCertificates(X509Certificate2Collection collection)
+        {
+            if (collection == null) return;
+            foreach (var cert in collection)
+            {
+                cert.Dispose();
+            }
+        }
+
+        static async Task<int> Main(string[] args)
+        {
+            using var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (s, e) =>
+            {
+                Console.WriteLine("\nCanceling...");
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
+            try
+            {
+                var (selectedSources, dryRun, quiet, showHelp) = ParseArguments(args);
+
+                if (showHelp)
+                {
+                    PrintUsage();
+                    return 0;
+                }
+
+                if (dryRun)
+                {
+                    Console.WriteLine("Dry run enabled: No changes will be made to the certificate store.");
+                }
+
+                var host = Host.CreateDefaultBuilder(args)
+                    .ConfigureLogging(logging =>
+                    {
+                        logging.ClearProviders();
+                        logging.AddConsole(options => options.FormatterName = "CleanLayout")
+                               .AddConsoleFormatter<CleanConsoleFormatter, ConsoleFormatterOptions>();
+                    })
+                    .ConfigureServices((context, services) =>
+                    {
+                        services.Configure<AppSettings>(context.Configuration.GetSection(AppSettings.Position));
+                        services.AddTransient<ICertificateDownloader, CertificateDownloader>();
+                        services.AddTransient<ICertificateValidator, CertificateValidator>();
+                        services.AddTransient<ICertificateInstaller, CertificateInstaller>();
+                    })
+                    .Build();
+
+                var downloader = host.Services.GetRequiredService<ICertificateDownloader>();
+                var validator = host.Services.GetRequiredService<ICertificateValidator>();
+                var installer = host.Services.GetRequiredService<ICertificateInstaller>();
+                var appSettings = host.Services.GetRequiredService<IOptions<AppSettings>>().Value;
+                var logger = host.Services.GetRequiredService<ILogger<Program>>();
+
+                if (selectedSources.HasFlag(CertSource.ITI))
+                {
+                    logger.LogInformation("====================== ITI ======================");
+                    X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(appSettings.ITICertUrl, cts.Token);
+                    if (itiCertificates.Count > 0)
+                    {
+                        installer.InstallCertificates(itiCertificates, dryRun);
+                        DisposeCertificates(itiCertificates);
+                    }
+                }
+
+                if (selectedSources.HasFlag(CertSource.MPF))
+                {
+                    logger.LogInformation("====================== MPF ======================");
+                    X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(appSettings.MPFCertUrl, cts.Token);
+                    if (mpfCertificates.Count > 0)
+                    {
+                        installer.InstallCertificates(mpfCertificates, dryRun);
+                        DisposeCertificates(mpfCertificates);
+                    }
+                }
+
+                logger.LogInformation("=================================================");
+                logger.LogInformation("Installation process completed.");
+
+                WaitForKeyPress(quiet);
+
+                return 0;
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine("Error: {0}", ex.Message);
+                PrintUsage();
+                WaitForKeyPress(quiet: false);
+                return -1;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Unexpected error: {0}", ex.Message);
+                WaitForKeyPress(quiet: false);
+                return -1;
+            }
+        }
+
+        static void WaitForKeyPress(bool quiet)
+        {
             if (!quiet)
             {
-                Console.WriteLine("To run in quiet mode use -q parameters.");
-                Console.WriteLine("Press any key to exit.");
+                Console.WriteLine();
+                Console.WriteLine("Use the -q parameter to run without this prompt.");
+                Console.WriteLine("Press any key to exit...");
                 Console.ReadKey(true);
             }
-            
         }
     }
 }
