@@ -208,6 +208,15 @@ namespace WinCertInstaller
                     if (sources.TryGetProperty("MPFCertUrl", out var mpfUrl))
                         settings.MPFCertUrl = mpfUrl.GetString() ?? string.Empty;
                 }
+                else
+                {
+                    // Fallback to root level if not nested
+                    if (root.TryGetProperty("ITICertUrl", out var itiUrl))
+                        settings.ITICertUrl = itiUrl.GetString() ?? string.Empty;
+                    
+                    if (root.TryGetProperty("MPFCertUrl", out var mpfUrl))
+                        settings.MPFCertUrl = mpfUrl.GetString() ?? string.Empty;
+                }
 
                 return settings;
             }

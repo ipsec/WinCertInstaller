@@ -41,12 +41,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: WinCertInstaller-Win64
-        path: ./publish/WinCertInstaller.exe
+        path: ./publish/
 
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: ./publish/WinCertInstaller.exe
+        files: |
+          ./publish/WinCertInstaller.exe
+          ./publish/appsettings.json
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
