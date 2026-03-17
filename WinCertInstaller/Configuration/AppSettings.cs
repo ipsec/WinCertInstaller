@@ -4,6 +4,9 @@ namespace WinCertInstaller.Configuration
     /// Application settings containing default URLs for certificate downloads.
     /// Mapped directly from appsettings.json via IOptions.
     /// </summary>
+    using System.Diagnostics.CodeAnalysis;
+
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class AppSettings
     {
         public const string Position = "CertificateSources";

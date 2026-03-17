@@ -114,6 +114,12 @@ namespace WinCertInstaller
                 }
 
                 var host = Host.CreateDefaultBuilder(args)
+                    .ConfigureAppConfiguration((context, config) =>
+                    {
+                        config.SetBasePath(AppContext.BaseDirectory);
+                        config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                        config.AddEnvironmentVariables();
+                    })
                     .ConfigureLogging(logging =>
                     {
                         logging.ClearProviders();
@@ -122,7 +128,9 @@ namespace WinCertInstaller
                     })
                     .ConfigureServices((context, services) =>
                     {
-                        services.Configure<AppSettings>(context.Configuration.GetSection(AppSettings.Position));
+                        services.AddOptions<AppSettings>()
+                                .BindConfiguration(AppSettings.Position);
+                        
                         services.AddTransient<ICertificateDownloader, CertificateDownloader>();
                         services.AddTransient<ICertificateValidator, CertificateValidator>();
                         services.AddTransient<ICertificateInstaller, CertificateInstaller>();
@@ -138,22 +146,36 @@ namespace WinCertInstaller
                 if (selectedSources.HasFlag(CertSource.ITI))
                 {
                     logger.LogInformation("====================== ITI ======================");
-                    X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(appSettings.ITICertUrl, cts.Token);
-                    if (itiCertificates.Count > 0)
+                    if (string.IsNullOrWhiteSpace(appSettings.ITICertUrl))
                     {
-                        installer.InstallCertificates(itiCertificates, dryRun);
-                        DisposeCertificates(itiCertificates);
+                        logger.LogError("Configuration Error: ITICertUrl is empty or missing from appsettings.json. Run with -h for help.");
+                    }
+                    else
+                    {
+                        X509Certificate2Collection itiCertificates = await downloader.GetZIPCertificatesAsync(appSettings.ITICertUrl, cts.Token);
+                        if (itiCertificates.Count > 0)
+                        {
+                            installer.InstallCertificates(itiCertificates, dryRun);
+                            DisposeCertificates(itiCertificates);
+                        }
                     }
                 }
 
                 if (selectedSources.HasFlag(CertSource.MPF))
                 {
                     logger.LogInformation("====================== MPF ======================");
-                    X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(appSettings.MPFCertUrl, cts.Token);
-                    if (mpfCertificates.Count > 0)
+                    if (string.IsNullOrWhiteSpace(appSettings.MPFCertUrl))
                     {
-                        installer.InstallCertificates(mpfCertificates, dryRun);
-                        DisposeCertificates(mpfCertificates);
+                        logger.LogError("Configuration Error: MPFCertUrl is empty or missing from appsettings.json. Run with -h for help.");
+                    }
+                    else
+                    {
+                        X509Certificate2Collection mpfCertificates = await downloader.GetP7BCertificatesAsync(appSettings.MPFCertUrl, cts.Token);
+                        if (mpfCertificates.Count > 0)
+                        {
+                            installer.InstallCertificates(mpfCertificates, dryRun);
+                            DisposeCertificates(mpfCertificates);
+                        }
                     }
                 }
 
