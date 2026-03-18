@@ -19,17 +19,52 @@ param (
     [string]$LogPath = "$env:ProgramData\WinCertInstaller\install.log"
 )
 
-# 1. Force TLS 1.2+ for secure downloads
+# ---------------------------------------------------------
+# 1. Elevation Check (Self-Restart if needed)
+# ---------------------------------------------------------
+if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Warning "Process is not elevated. Requesting Administrator privileges..."
+    
+    $argList = @("-File", "`"$PSCommandPath`"")
+    foreach ($key in $PSBoundParameters.Keys) {
+        $val = $PSBoundParameters[$key]
+        if ($val -is [switch]) {
+            if ($val) { $argList += "-$key" }
+        } else {
+            $argList += "-$key"
+            $argList += "`"$val`""
+        }
+    }
+    $argList += $MyInvocation.UnboundArguments
+
+    try {
+        Start-Process powershell.exe -ArgumentList $argList -Verb RunAs -ErrorAction Stop
+        exit
+    } catch {
+        Write-Error "Failed to request elevation or user cancelled UAC: $($_.Exception.Message)"
+        return
+    }
+}
+
+# ---------------------------------------------------------
+# 2. Environment & Logging Setup
+# ---------------------------------------------------------
+
+# Force TLS 1.2+ for secure downloads
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# 2. Robust UTF-8 configuration for PowerShell 5.1
+# Robust UTF-8 configuration
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
-# Logging Setup
-$logDir = [System.IO.Path]::GetDirectoryName($LogPath)
-if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+# Logging Setup (Safe to try creating directory in ProgramData)
+try {
+    $logDir = [System.IO.Path]::GetDirectoryName($LogPath)
+    if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force -ErrorAction SilentlyContinue | Out-Null }
+} catch {
+    # If this fails, Write-Log will catch it, so we can ignore it here for now.
+}
 
 function Write-Log {
     param (
@@ -51,18 +86,15 @@ function Write-Log {
         default   { Write-Host $Message -ForegroundColor $Color }
     }
     
-    # File Persistence (Audit)
+    # File Persistence (Audit) - Only attempt if elevated or path is writable
     try {
-        $logLine | Out-File -FilePath $LogPath -Append -Encoding UTF8
+        $logLine | Out-File -FilePath $LogPath -Append -Encoding UTF8 -ErrorAction Stop
     } catch {
-        Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+        # Only warn if NOT in a non-elevated dryrun (where failure is expected)
+        if (-not $DryRun) {
+            Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+        }
     }
-}
-
-# 3. Check for Administrator privileges upfront (unless DryRun)
-if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Log "This script must be executed as Administrator for certificate store operations." -Level "ERROR"
-    return
 }
 
 if (-not $Iti -and -not $Mpf -and -not $All) { $All = $true }
@@ -126,7 +158,7 @@ Write-Log "Starting WinCertInstaller process..."
 
 # --- ITI Installation ---
 if ($Iti) {
-    Write-Host "====================== ITI ======================" -ForegroundColor Yellow
+    Write-Log "====================== ITI ======================" -Color Yellow
     Write-Log "Processing ITI certificates..."
     $zipPath = "$env:TEMP\ACcompactado.zip"
     $extractPath = "$env:TEMP\ITI_Certs"
@@ -173,7 +205,7 @@ if ($Iti) {
 
 # --- MPF Installation ---
 if ($Mpf) {
-    Write-Host "====================== MPF ======================" -ForegroundColor Yellow
+    Write-Log "====================== MPF ======================" -Color Yellow
     Write-Log "Processing MPF certificates..."
     $p7bPath = "$env:TEMP\ACIMPF.p7b"
     
@@ -213,5 +245,5 @@ if ($Mpf) {
     }
 }
 
-Write-Host "=================================================" -ForegroundColor Yellow
+Write-Log "=================================================" -Color Yellow
 Write-Log "Process completed."
