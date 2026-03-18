@@ -11,9 +11,14 @@ It was developed to be lightweight (only **~6 KB**) and requires no compilation 
 
 *   **Ultra-Lightweight**: Only a few KB of native PowerShell code.
 *   **Automated Certificate Fetching**: Downloads the latest `.zip` (ITI) and `.p7b` (MPF) bundles directly from official repositories.
-*   **Robust Decoding**: Handles **PEM-encoded** certificates and PKCS#7 payloads.
-*   **Intelligent Store Detection**: Automatically distinguishes between Root CAs (installed in `Trusted Root`) and Intermediate CAs (installed in `Intermediate Certification Authorities`).
-*   **UTF-8 Support**: Full support for accented characters in the console.
+*   **Enterprise-Ready Robustness**:
+    *   **Security**: Forces **TLS 1.2+** for all downloads.
+    *   **Pre-emptive Admin Check**: Validates permissions before starting long operations.
+    *   **Resource Management**: Uses `.Dispose()` in `finally` blocks to ensure system resources are freed.
+    *   **Performance**: Optimized memory usage using captured loops instead of array re-allocation.
+    *   **Error Resilience**: Comprehensive `try-catch` blocks for network and extraction failures.
+*   **Highly Configurable**: Official repository URLs are available as parameters, making the script future-proof.
+*   **Intelligent Store Detection**: Automatically distinguishes between Root CAs and Intermediate CAs.
 *   **Idempotency & Reinstallation**: Detects if a certificate is missing from its correct store and reinstalls it even if it exists in another store.
 *   **Force Install**: Option to force reinstallation of all certificates regardless of their current status.
 
