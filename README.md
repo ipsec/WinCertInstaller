@@ -1,87 +1,66 @@
 # WinCertInstaller 🛡️
 
-[![.NET](https://github.com/fernandoribeiro/WinCertInstaller/actions/workflows/dotnet.yml/badge.svg)](https://github.com/fernandoribeiro/WinCertInstaller/actions/workflows/dotnet.yml)
+WinCertInstaller is a native PowerShell utility designed to automate the download and installation of official Root and Intermediate Certificates from **ITI (ICP-Brasil)** and **MPF** into the Windows Certificate Store.
 
-WinCertInstaller is an enterprise-grade C# (.NET 10) utility designed to automate the download and installation of official Root and Intermediate Certificates from **ITI (ICP-Brasil)** and **MPF** into the Windows Certificate Store.
+It was developed to be lightweight (only **~6 KB**) and requires no compilation or external dependencies, leveraging native Windows APIs and the .NET framework already built into PowerShell.
 
 > [!IMPORTANT]
-> **Administrator Privileges Required**: This application requires elevated privileges to write certificates to the `LocalMachine` X509 store. It includes an `app.manifest` to automatically request UAC elevation if not already running as Administrator.
+> **Administrator Privileges Required**: This script requires elevated privileges to write certificates to the `LocalMachine` X509 store. Run your PowerShell terminal as Administrator.
 
 ## 🚀 Key Features
 
+*   **Ultra-Lightweight**: Only a few KB of native PowerShell code.
 *   **Automated Certificate Fetching**: Downloads the latest `.zip` (ITI) and `.p7b` (MPF) bundles directly from official repositories.
-*   **Robust Decoding**: Handles various formats, including **PEM-encoded PKCS#7** payloads (MPF) and nested ZIP archives (ITI).
-*   **Intelligent Validation**: 
-    *   Filters for Certificate Authorities (CA).
-    *   Distinguishes between Root CAs (installed in `Trusted Root`) and Intermediate CAs (installed in `Intermediate Certification Authorities`).
-    *   Checks for expiration and activation dates.
-*   **Idempotency**: Detects and skips certificates already present in the store to avoid duplication.
-*   **Modern CLI Experience**: Features clean, color-coded console output using a custom `ILogger` formatter.
-*   **Dry-Run Mode**: Validate the entire download and extraction process without modifying the system state.
-
-## 🏗️ Architecture (SOLID & Enterprise)
-
-The application has been refactored to follow modern .NET best practices:
-*   **Microsoft.Extensions.Hosting**: Uses the Generic Host pattern for dependency injection, logging, and configuration management.
-*   **Dynamic Configuration**: All certificate URLs and settings are managed via `appsettings.json`.
-*   **Structured Logging**: Utilizes `ILogger<T>` for clean, maintainable logging that can be easily redirected to cloud providers or files.
-*   **Dependency Injection**: Decoupled services for Downloading, Validation, and Installation, making the codebase highly testable and maintainable.
-
-## 💻 Compatibility
-
-*   **Runtime**: .NET 10.0+ (Windows-specific payload).
-*   **Operating Systems**: 
-    *   **Windows 10 / 11** (Fully supported, native target).
-    *   **Windows Server 2016 / 2019 / 2022**.
-    *   *Note: Requires administrator access for LocalMachine store operations.*
+*   **Data Integrity (SHA512)**: Verifies both ITI and MPF certificate bundles against their official SHA512 hash files before processing.
+*   **Enterprise-Ready Robustness**:
+    *   **Audit Logging**: Automatically records all operations (with timestamps and severity) to `%ProgramData%\WinCertInstaller\install.log` for post-deployment auditing.
+    *   **Security**: Forces **TLS 1.2+** for all downloads.
+    *   **Pre-emptive Admin Check**: Validates permissions before starting long operations.
+    *   **Resource Management**: Uses `.Dispose()` in `finally` blocks to ensure system resources are freed.
+    *   **Performance**: Optimized memory usage using captured loops instead of array re-allocation.
+    *   **Error Resilience**: Comprehensive `try-catch` blocks for network and extraction failures.
+*   **Highly Configurable**: Official repository URLs are available as parameters, making the script future-proof.
+*   **Intelligent Store Detection**: Automatically distinguishes between Root CAs and Intermediate CAs.
+*   **Idempotency & Reinstallation**: Detects if a certificate is missing from its correct store and reinstalls it even if it exists in another store.
+*   **Force Install**: Option to force reinstallation of all certificates regardless of their current status.
 
 ## 🛠️ Usage
 
-```console
-Usage: WinCertInstaller [options]
-
-Options:
-  --iti        Install ITI certificates
-  --mpf        Install MPF certificates
-  --all        Install both ITI and MPF certificates (default)
-  --dry-run    Simulate installation without writing to the store
-  -q           Quiet mode (suppress exit prompt)
-  -h,--help    Show this help message
+```powershell
+.\wincertinstall.ps1 [options]
 ```
+
+### Options
+*   `-Iti`: Install ITI certificates.
+*   `-Mpf`: Install MPF certificates.
+*   `-All`: Install both ITI and MPF certificates (default).
+*   `-DryRun`: Simulate installation without modifying the store.
+*   `-ForceInstall`: Force installation of all certificates, ignoring existing ones.
 
 ### Examples
 
 **Standard Installation (All Sources):**
 ```powershell
-WinCertInstaller.exe
+.\wincertinstall.ps1
 ```
 
-**Dry-Run of ITI Source:**
+**Force Reinstallation of everything:**
 ```powershell
-WinCertInstaller.exe --iti --dry-run
+.\wincertinstall.ps1 -All -ForceInstall
 ```
 
-**Quiet Installation (Script Mode):**
+**Dry-Run (Simulation) of ITI Source:**
 ```powershell
-WinCertInstaller.exe --all -q
+.\wincertinstall.ps1 -Iti -DryRun
 ```
 
-## 🧪 Development
+## 💻 Compatibility
 
-### Configuration
-Edit `appsettings.json` to update certificate URLs or tune logging behavior without recompiling.
-
-### Build & Test
-```powershell
-# Restore and build the solution
-dotnet build WinCertInstaller.sln
-
-# Run unit tests
-dotnet test WinCertInstaller.sln
-```
-
-### CI/CD
-A GitHub Actions workflow is included (`.github/workflows/dotnet.yml`) that automatically builds, tests, and publishes a self-contained, single-file executable on every push to `main`/`master`.
+*   **PowerShell Versions**: Optimized for **PowerShell 5.1** (Windows default) and **PowerShell Core (6+)**.
+*   **Operating Systems**: 
+    *   Windows 10 / 11.
+    *   Windows Server 2016 / 2019 / 2022.
+    *   *Note: Requires administrator access for LocalMachine store operations.*
 
 ---
 *Maintained with ❤️ for secure Windows environments.*
