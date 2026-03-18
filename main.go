@@ -8,7 +8,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"syscall"
@@ -34,6 +33,9 @@ var (
 	procCertOpenStore                    = crypt32.NewProc("CertOpenStore")
 	procCertAddEncodedCertificateToStore = crypt32.NewProc("CertAddEncodedCertificateToStore")
 	procCertCloseStore                   = crypt32.NewProc("CertCloseStore")
+
+	urlmon                = syscall.NewLazyDLL("urlmon.dll")
+	procURLDownloadToFile = urlmon.NewProc("URLDownloadToFileW")
 )
 
 type contentInfo struct {
@@ -101,24 +103,50 @@ func main() {
 }
 
 func downloadFile(url string) []byte {
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Get(url)
+	// Create a temporary file to store the download
+	tmpFile, err := os.CreateTemp("", "cert-*.tmp")
 	if err != nil {
-		println("ERROR: Failed to download ", url, ": ", err.Error())
+		println("ERROR: Failed to create temporary file: ", err.Error())
 		return nil
 	}
-	defer resp.Body.Close()
+	tmpFilePath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpFilePath)
 
-	if resp.StatusCode != http.StatusOK {
-		println("ERROR: Bad status ", resp.Status, " for ", url)
-		return nil
-	}
-
-	data, err := io.ReadAll(resp.Body)
+	// Prepare strings for the syscall
+	urlPtr, err := syscall.UTF16PtrFromString(url)
 	if err != nil {
-		println("ERROR: Failed to read body from ", url, ": ", err.Error())
+		println("ERROR: Failed to convert URL to UTF16: ", err.Error())
 		return nil
 	}
+	filePtr, err := syscall.UTF16PtrFromString(tmpFilePath)
+	if err != nil {
+		println("ERROR: Failed to convert file path to UTF16: ", err.Error())
+		return nil
+	}
+
+	// Call URLDownloadToFileW
+	// HRESULT URLDownloadToFileW(LPUNKNOWN pCaller, LPCWSTR szURL, LPCWSTR szFileName, DWORD dwReserved, LPBINDSTATUSCALLBACK lpfnCB);
+	hr, _, _ := procURLDownloadToFile.Call(
+		0,                       // pCaller
+		uintptr(unsafe.Pointer(urlPtr)),
+		uintptr(unsafe.Pointer(filePtr)),
+		0,                       // dwReserved
+		0,                       // lpfnCB
+	)
+
+	if hr != 0 {
+		println("ERROR: Failed to download ", url, " (HRESULT: ", hr, ")")
+		return nil
+	}
+
+	// Read the downloaded file
+	data, err := os.ReadFile(tmpFilePath)
+	if err != nil {
+		println("ERROR: Failed to read downloaded file: ", err.Error())
+		return nil
+	}
+
 	return data
 }
 
@@ -145,6 +173,14 @@ func downloadZIPCerts(url string) []*x509.Certificate {
 			rc.Close()
 			if err != nil {
 				continue
+			}
+
+			if strings.Contains(string(cerData), "-----BEGIN CERTIFICATE-----") {
+				block, _ := pem.Decode(cerData)
+				if block == nil {
+					continue
+				}
+				cerData = block.Bytes
 			}
 
 			cert, err := x509.ParseCertificate(cerData)
