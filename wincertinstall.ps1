@@ -14,6 +14,7 @@ param (
     [switch]$ForceInstall,
     [string]$ItiUrl = "http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip",
     [string]$MpfUrl = "http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b",
+    [string]$ItiHashUrl = "https://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/hashsha512.txt",
     [string]$LogPath = "$env:ProgramData\WinCertInstaller\install.log"
 )
 
@@ -57,8 +58,8 @@ function Write-Log {
     }
 }
 
-# 3. Check for Administrator privileges upfront
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+# 3. Check for Administrator privileges upfront (unless DryRun)
+if (-not $DryRun -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Log "This script must be executed as Administrator for certificate store operations." -Level "ERROR"
     return
 }
@@ -130,7 +131,21 @@ if ($Iti) {
     $extractPath = "$env:TEMP\ITI_Certs"
     
     try {
+        # 1. Download ITI ZIP and its corresponding SHA512 hash
         Invoke-WebRequest -Uri $ItiUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
+        
+        $hashPath = "$env:TEMP\iti_hash.txt"
+        Invoke-WebRequest -Uri $ItiHashUrl -OutFile $hashPath -UseBasicParsing -ErrorAction Stop
+        
+        # 2. Extract expected hash (first word/128 chars) and compare
+        $expectedHash = (Get-Content $hashPath).Substring(0, 128).Trim()
+        $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA512).Hash
+        
+        if ($expectedHash -ne $actualHash) {
+            Write-Log "Hash mismatch! Expected: $expectedHash, Actual: $actualHash" -Level "ERROR"
+            return
+        }
+        Write-Log "SHA512 Verification Successful." -Level "SUCCESS"
         
         if (Test-Path $extractPath) { Remove-Item -Path $extractPath -Recurse -Force }
         Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
