@@ -1,0 +1,29 @@
+name: PowerShell CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  lint:
+    name: Lint PowerShell Script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run PSScriptAnalyzer
+        uses: microsoft/psscriptanalyzer-action@v1.1
+        with:
+          path: .\wincertinstall.ps1
+          recurse: true
+
+  test:
+    name: Test (Dry-Run)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Script Dry-Run
+        shell: powershell
+        run: |
+          .\wincertinstall.ps1 -DryRun

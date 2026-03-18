@@ -1,12 +1,10 @@
 <#
 .SYNOPSIS
-    Script para instalar certificados ITI e MPF no Windows.
+    Script to install ITI and MPF certificates on Windows.
 .EXAMPLE
     .\WinCertInstaller.ps1 -All
     .\WinCertInstaller.ps1 -All -ForceInstall
 #>
-
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 param (
     [switch]$Iti,
@@ -15,6 +13,9 @@ param (
     [switch]$DryRun,
     [switch]$ForceInstall
 )
+
+# Robust UTF-8 configuration for PowerShell 5.1
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 if (-not $Iti -and -not $Mpf -and -not $All) { $All = $true }
 if ($All) { $Iti = $true; $Mpf = $true }
@@ -27,8 +28,8 @@ function Install-Certs {
 
     $now = Get-Date
     
-    $storeRoot = [System.Security.Cryptography.X509Certificates.X509Store]::new("Root", "LocalMachine")
-    $storeCA = [System.Security.Cryptography.X509Certificates.X509Store]::new("CertificateAuthority", "LocalMachine")
+    $storeRoot = [System.Security.Cryptography.X509Certificates.X509Store]::new([System.Security.Cryptography.X509Certificates.StoreName]::Root, [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+    $storeCA = [System.Security.Cryptography.X509Certificates.X509Store]::new([System.Security.Cryptography.X509Certificates.StoreName]::CertificateAuthority, [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
     
     $openMode = if ($DryRun) { "ReadOnly" } else { "ReadWrite" }
 
@@ -37,7 +38,7 @@ function Install-Certs {
         $storeCA.Open($openMode)
     }
     catch {
-        Write-Warning "ERRO: Não foi possível abrir o repositório do Windows. Execute como Administrador!"
+        Write-Warning "ERROR: Could not open Windows certificate store. Run as Administrator!"
         return
     }
 
@@ -45,38 +46,38 @@ function Install-Certs {
         $cn = $cert.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
 
         if ($now -lt $cert.NotBefore) {
-            Write-Warning "Ignorado: Certificado '$cn' ainda não está ativo."
+            Write-Warning "Skipped      : Certificate '$cn' is not yet active."
             continue
         }
         if ($now -gt $cert.NotAfter) {
-            Write-Warning "Ignorado: Certificado '$cn' está expirado."
+            Write-Warning "Skipped      : Certificate '$cn' is expired."
             continue
         }
 
+        # Define the target store based on certificate properties
         $isRoot = ($cert.Subject -eq $cert.Issuer)
-        $storeName = if ($isRoot) { "Root (Raiz)" } else { "CA (Intermediária)" }
+        $storeName = if ($isRoot) { "Root (Root)" } else { "CA (Intermediate)" }
         $targetStore = if ($isRoot) { $storeRoot } else { $storeCA }
 
-        # Se NÃO for ForceInstall, verifica se já existe
+        # Check if it exists in the target store
         if (-not $ForceInstall) {
-            $existingCerts = $targetStore.Certificates.Find([System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint, $cert.Thumbprint, $false)
-
-            if ($existingCerts.Count -gt 0) {
-                Write-Host "Já instalado : '$cn' em $storeName." -ForegroundColor DarkGray
+            $existing = $targetStore.Certificates.Find([System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint, $cert.Thumbprint, $false)
+            if ($existing.Count -gt 0) {
+                Write-Host "Already Inst.: '$cn' in $storeName." -ForegroundColor DarkGray
                 continue
             }
         }
 
         if ($DryRun) {
-            Write-Host "Dry-run      : Adicionaria '$cn' em $storeName." -ForegroundColor Cyan
+            Write-Host "Dry-run      : Would add '$cn' to $storeName." -ForegroundColor Cyan
         }
         else {
             $targetStore.Add($cert)
             if ($ForceInstall) {
-                Write-Host "Forçado      : '$cn' injetado em $storeName." -ForegroundColor Magenta
+                Write-Host "Forced       : '$cn' injected into $storeName." -ForegroundColor Magenta
             }
             else {
-                Write-Host "Instalado    : '$cn' adicionado em $storeName." -ForegroundColor Green
+                Write-Host "Installed    : '$cn' added to $storeName." -ForegroundColor Green
             }
         }
     }
@@ -85,10 +86,10 @@ function Install-Certs {
     $storeCA.Close()
 }
 
-# --- Instalação ITI ---
+# --- ITI Installation ---
 if ($Iti) {
     Write-Host "====================== ITI ======================" -ForegroundColor Yellow
-    Write-Host "Baixando e processando certificados ITI..."
+    Write-Host "Downloading and processing ITI certificates..."
     $zipPath = "$env:TEMP\ACcompactado.zip"
     $extractPath = "$env:TEMP\ITI_Certs"
     
@@ -109,10 +110,10 @@ if ($Iti) {
     Remove-Item $extractPath -Recurse -Force
 }
 
-# --- Instalação MPF ---
+# --- MPF Installation ---
 if ($Mpf) {
     Write-Host "====================== MPF ======================" -ForegroundColor Yellow
-    Write-Host "Baixando e processando certificados MPF..."
+    Write-Host "Downloading and processing MPF certificates..."
     $p7bPath = "$env:TEMP\ACIMPF.p7b"
     
     Invoke-WebRequest -Uri $MpfUrl -OutFile $p7bPath -UseBasicParsing
@@ -131,4 +132,4 @@ if ($Mpf) {
 }
 
 Write-Host "=================================================" -ForegroundColor Yellow
-Write-Host "Processo concluído."
+Write-Host "Process completed."
