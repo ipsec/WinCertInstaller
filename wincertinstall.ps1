@@ -13,7 +13,8 @@ param (
     [switch]$DryRun,
     [switch]$ForceInstall,
     [string]$ItiUrl = "http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip",
-    [string]$MpfUrl = "http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b"
+    [string]$MpfUrl = "http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b",
+    [string]$LogPath = "$env:ProgramData\WinCertInstaller\install.log"
 )
 
 # 1. Force TLS 1.2+ for secure downloads
@@ -24,9 +25,41 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
+# Logging Setup
+$logDir = [System.IO.Path]::GetDirectoryName($LogPath)
+if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+
+function Write-Log {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [ValidateSet("INFO", "WARN", "ERROR", "SUCCESS", "DRYRUN")]
+        [string]$Level = "INFO",
+        [ConsoleColor]$Color = "White"
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logLine = "$timestamp [$Level] $Message"
+    
+    # Console Output (Pretty)
+    switch ($Level) {
+        "WARN"    { Write-Warning $Message }
+        "ERROR"   { Write-Error $Message -ErrorAction SilentlyContinue }
+        "SUCCESS" { Write-Host $Message -ForegroundColor Green }
+        "DRYRUN"  { Write-Host $Message -ForegroundColor Cyan }
+        default   { Write-Host $Message -ForegroundColor $Color }
+    }
+    
+    # File Persistence (Audit)
+    try {
+        $logLine | Out-File -FilePath $LogPath -Append -Encoding UTF8
+    } catch {
+        Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+    }
+}
+
 # 3. Check for Administrator privileges upfront
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error "This script must be executed as Administrator to write to the LocalMachine store."
+    Write-Log "This script must be executed as Administrator for certificate store operations." -Level "ERROR"
     return
 }
 
@@ -51,11 +84,11 @@ function Install-Certs {
             $cn = $cert.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
 
             if ($now -lt $cert.NotBefore) {
-                Write-Warning "Skipped      : Certificate '$cn' is not yet active."
+                Write-Log "Skipped: Certificate '$cn' is not yet active." -Level "WARN"
                 continue
             }
             if ($now -gt $cert.NotAfter) {
-                Write-Warning "Skipped      : Certificate '$cn' is expired."
+                Write-Log "Skipped: Certificate '$cn' is expired." -Level "WARN"
                 continue
             }
 
@@ -66,22 +99,17 @@ function Install-Certs {
             if (-not $ForceInstall) {
                 $existing = $targetStore.Certificates.Find([System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint, $cert.Thumbprint, $false)
                 if ($existing.Count -gt 0) {
-                    Write-Host "Already Inst.: '$cn' in $storeName." -ForegroundColor DarkGray
+                    Write-Log "Already Inst.: '$cn' in $storeName." -Color DarkGray
                     continue
                 }
             }
 
             if ($DryRun) {
-                Write-Host "Dry-run      : Would add '$cn' to $storeName." -ForegroundColor Cyan
+                Write-Log "Dry-run: Would add '$cn' to $storeName." -Level "DRYRUN"
             }
             else {
                 $targetStore.Add($cert)
-                if ($ForceInstall) {
-                    Write-Host "Forced       : '$cn' injected into $storeName." -ForegroundColor Magenta
-                }
-                else {
-                    Write-Host "Installed    : '$cn' added to $storeName." -ForegroundColor Green
-                }
+                Write-Log "$(if($ForceInstall){'Forced'}else{'Installed'}): '$cn' added to $storeName." -Level "SUCCESS"
             }
         }
     }
@@ -92,10 +120,12 @@ function Install-Certs {
     }
 }
 
+Write-Log "Starting WinCertInstaller process..."
+
 # --- ITI Installation ---
 if ($Iti) {
     Write-Host "====================== ITI ======================" -ForegroundColor Yellow
-    Write-Host "Downloading and processing ITI certificates..."
+    Write-Log "Processing ITI certificates..."
     $zipPath = "$env:TEMP\ACcompactado.zip"
     $extractPath = "$env:TEMP\ITI_Certs"
     
@@ -107,7 +137,7 @@ if ($Iti) {
         
         $certFiles = Get-ChildItem -Path $extractPath -Include "*.cer", "*.crt" -Recurse
         
-        # 5. Optimize memory: capture loop output instead of using +=
+        # 5. Optimize memory: capture loop output
         $certs = foreach ($file in $certFiles) {
             [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($file.FullName)
         }
@@ -117,7 +147,7 @@ if ($Iti) {
         }
     }
     catch {
-        Write-Error "Failed to process ITI certificates: $($_.Exception.Message)"
+        Write-Log "Failed to process ITI certificates: $($_.Exception.Message)" -Level "ERROR"
     }
     finally {
         if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
@@ -128,7 +158,7 @@ if ($Iti) {
 # --- MPF Installation ---
 if ($Mpf) {
     Write-Host "====================== MPF ======================" -ForegroundColor Yellow
-    Write-Host "Downloading and processing MPF certificates..."
+    Write-Log "Processing MPF certificates..."
     $p7bPath = "$env:TEMP\ACIMPF.p7b"
     
     try {
@@ -146,7 +176,7 @@ if ($Mpf) {
         }
     }
     catch {
-        Write-Error "Failed to process MPF certificates: $($_.Exception.Message)"
+        Write-Log "Failed to process MPF certificates: $($_.Exception.Message)" -Level "ERROR"
     }
     finally {
         if (Test-Path $p7bPath) { Remove-Item $p7bPath -Force }
@@ -154,4 +184,4 @@ if ($Mpf) {
 }
 
 Write-Host "=================================================" -ForegroundColor Yellow
-Write-Host "Process completed."
+Write-Log "Process completed."

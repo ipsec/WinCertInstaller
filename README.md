@@ -12,6 +12,7 @@ It was developed to be lightweight (only **~6 KB**) and requires no compilation 
 *   **Ultra-Lightweight**: Only a few KB of native PowerShell code.
 *   **Automated Certificate Fetching**: Downloads the latest `.zip` (ITI) and `.p7b` (MPF) bundles directly from official repositories.
 *   **Enterprise-Ready Robustness**:
+    *   **Audit Logging**: Automatically records all operations (with timestamps and severity) to `%ProgramData%\WinCertInstaller\install.log` for post-deployment auditing.
     *   **Security**: Forces **TLS 1.2+** for all downloads.
     *   **Pre-emptive Admin Check**: Validates permissions before starting long operations.
     *   **Resource Management**: Uses `.Dispose()` in `finally` blocks to ensure system resources are freed.
