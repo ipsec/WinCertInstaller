@@ -15,6 +15,7 @@ param (
     [string]$ItiUrl = "http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip",
     [string]$MpfUrl = "http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b",
     [string]$ItiHashUrl = "https://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/hashsha512.txt",
+    [string]$MpfHashUrl = "http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.sha512sum",
     [string]$LogPath = "$env:ProgramData\WinCertInstaller\install.log"
 )
 
@@ -177,7 +178,21 @@ if ($Mpf) {
     $p7bPath = "$env:TEMP\ACIMPF.p7b"
     
     try {
+        # 1. Download MPF P7B and its corresponding SHA512 hash
         Invoke-WebRequest -Uri $MpfUrl -OutFile $p7bPath -UseBasicParsing -ErrorAction Stop
+        
+        $hashPath = "$env:TEMP\mpf_hash.txt"
+        Invoke-WebRequest -Uri $MpfHashUrl -OutFile $hashPath -UseBasicParsing -ErrorAction Stop
+        
+        # 2. Extract expected hash (first word/128 chars) and compare
+        $expectedHash = (Get-Content $hashPath).Substring(0, 128).Trim()
+        $actualHash = (Get-FileHash -Path $p7bPath -Algorithm SHA512).Hash
+        
+        if ($expectedHash -ne $actualHash) {
+            Write-Log "Hash mismatch for MPF certificates! Expected: $expectedHash, Actual: $actualHash" -Level "ERROR"
+            return
+        }
+        Write-Log "SHA512 Verification Successful (MPF)." -Level "SUCCESS"
         
         $certCollection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
         $certCollection.Import($p7bPath)

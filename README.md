@@ -11,7 +11,7 @@ It was developed to be lightweight (only **~6 KB**) and requires no compilation 
 
 *   **Ultra-Lightweight**: Only a few KB of native PowerShell code.
 *   **Automated Certificate Fetching**: Downloads the latest `.zip` (ITI) and `.p7b` (MPF) bundles directly from official repositories.
-*   **Data Integrity (SHA512)**: Verifies the ITI certificates bundle against the official SHA512 hash file before extraction and installation.
+*   **Data Integrity (SHA512)**: Verifies both ITI and MPF certificate bundles against their official SHA512 hash files before processing.
 *   **Enterprise-Ready Robustness**:
     *   **Audit Logging**: Automatically records all operations (with timestamps and severity) to `%ProgramData%\WinCertInstaller\install.log` for post-deployment auditing.
     *   **Security**: Forces **TLS 1.2+** for all downloads.
