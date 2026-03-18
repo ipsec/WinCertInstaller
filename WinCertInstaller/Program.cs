@@ -195,30 +195,19 @@ namespace WinCertInstaller
             try
             {
                 string json = File.ReadAllText(configPath);
+                if (string.IsNullOrWhiteSpace(json)) return new AppSettings();
+
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
                 
-                var settings = new AppSettings();
-
+                // Try to get the "CertificateSources" property if it exists (nested structure support)
                 if (root.TryGetProperty("CertificateSources", out var sources))
                 {
-                    if (sources.TryGetProperty("ITICertUrl", out var itiUrl))
-                        settings.ITICertUrl = itiUrl.GetString() ?? string.Empty;
-                    
-                    if (sources.TryGetProperty("MPFCertUrl", out var mpfUrl))
-                        settings.MPFCertUrl = mpfUrl.GetString() ?? string.Empty;
+                    return JsonSerializer.Deserialize(sources.GetRawText(), AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
                 }
-                else
-                {
-                    // Fallback to root level if not nested
-                    if (root.TryGetProperty("ITICertUrl", out var itiUrl))
-                        settings.ITICertUrl = itiUrl.GetString() ?? string.Empty;
-                    
-                    if (root.TryGetProperty("MPFCertUrl", out var mpfUrl))
-                        settings.MPFCertUrl = mpfUrl.GetString() ?? string.Empty;
-                }
-
-                return settings;
+                
+                // Try to deserialize from the root (flat structure support)
+                return JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
             }
             catch
             {
