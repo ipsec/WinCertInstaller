@@ -7,9 +7,7 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"flag"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -58,10 +56,10 @@ func main() {
 	flagQuiet := flag.Bool("q", false, "Quiet mode (suppress exit prompt)")
 
 	flag.Usage = func() {
-		fmt.Println("Usage: WinCertInstaller [options]")
-		fmt.Println("Options:")
+		println("Usage: WinCertInstaller [options]")
+		println("Options:")
 		flag.PrintDefaults()
-		fmt.Println("Example: WinCertInstaller --iti --dry-run")
+		println("Example: WinCertInstaller --iti --dry-run")
 	}
 	flag.Parse()
 
@@ -73,32 +71,32 @@ func main() {
 	installMPF := *flagMPF || *flagAll
 
 	if !installITI && !installMPF {
-		fmt.Println("Error: No certificate source selected.")
+		println("Error: No certificate source selected.")
 		flag.Usage()
 		waitForExit(*flagQuiet)
 		os.Exit(1)
 	}
 
 	if *flagDryRun {
-		log.Println("Dry run enabled: No changes will be made to the certificate store.")
+		println("Dry run enabled: No changes will be made to the certificate store.")
 	}
 
 	if installITI {
-		log.Println("====================== ITI ======================")
-		log.Printf("Downloading certificates from %s. Please wait...\n", itiDefaultUrl)
+		println("====================== ITI ======================")
+		println("Downloading certificates from ", itiDefaultUrl, ". Please wait...")
 		certs := downloadZIPCerts(itiDefaultUrl)
 		installCerts(certs, *flagDryRun)
 	}
 
 	if installMPF {
-		log.Println("====================== MPF ======================")
-		log.Printf("Downloading certificates from %s. Please wait...\n", mpfDefaultUrl)
+		println("====================== MPF ======================")
+		println("Downloading certificates from ", mpfDefaultUrl, ". Please wait...")
 		certs := downloadP7BCerts(mpfDefaultUrl)
 		installCerts(certs, *flagDryRun)
 	}
 
-	log.Println("=================================================")
-	log.Println("Installation process completed.")
+	println("=================================================")
+	println("Installation process completed.")
 	waitForExit(*flagQuiet)
 }
 
@@ -106,19 +104,19 @@ func downloadFile(url string) []byte {
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		log.Printf("ERROR: Failed to download %s: %v\n", url, err)
+		println("ERROR: Failed to download ", url, ": ", err.Error())
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("ERROR: Bad status %s for %s\n", resp.Status, url)
+		println("ERROR: Bad status ", resp.Status, " for ", url)
 		return nil
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("ERROR: Failed to read body from %s: %v\n", url, err)
+		println("ERROR: Failed to read body from ", url, ": ", err.Error())
 		return nil
 	}
 	return data
@@ -132,7 +130,7 @@ func downloadZIPCerts(url string) []*x509.Certificate {
 
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		log.Printf("ERROR: Failed to open ZIP from %s: %v\n", url, err)
+		println("ERROR: Failed to open ZIP from ", url, ": ", err.Error())
 		return nil
 	}
 
@@ -156,7 +154,7 @@ func downloadZIPCerts(url string) []*x509.Certificate {
 			parsedCerts = append(parsedCerts, cert)
 		}
 	}
-	log.Printf("Found %d certificate(s) in ZIP archive.\n", len(parsedCerts))
+	println("Found ", len(parsedCerts), " certificate(s) in ZIP archive.")
 	return parsedCerts
 }
 
@@ -170,7 +168,7 @@ func downloadP7BCerts(url string) []*x509.Certificate {
 	if strings.Contains(strData, "-----BEGIN PKCS7-----") {
 		block, _ := pem.Decode(data)
 		if block == nil {
-			log.Println("ERROR: Failed to decode PEM PKCS7.")
+			println("ERROR: Failed to decode PEM PKCS7.")
 			return nil
 		}
 		data = block.Bytes
@@ -181,23 +179,23 @@ func downloadP7BCerts(url string) []*x509.Certificate {
 		Content     asn1.RawValue `asn1:"explicit,tag:0,optional"`
 	}
 	if _, err := asn1.Unmarshal(data, &p7); err != nil {
-		log.Printf("ERROR: Failed to unmarshal PKCS7 wrapper: %v\n", err)
+		println("ERROR: Failed to unmarshal PKCS7 wrapper: ", err.Error())
 		return nil
 	}
 
 	var sd signedData
 	if _, err := asn1.Unmarshal(p7.Content.Bytes, &sd); err != nil {
-		log.Printf("ERROR: Failed to unmarshal signedData: %v\n", err)
+		println("ERROR: Failed to unmarshal signedData: ", err.Error())
 		return nil
 	}
 
 	certs, err := x509.ParseCertificates(sd.Certificates.Bytes)
 	if err != nil {
-		log.Printf("ERROR: Failed to parse certificates from PKCS7: %v\n", err)
+		println("ERROR: Failed to parse certificates from PKCS7: ", err.Error())
 		return nil
 	}
 
-	log.Printf("Extracted %d certificate(s) from P7B/PKCS7 payload.\n", len(certs))
+	println("Extracted ", len(certs), " certificate(s) from P7B/PKCS7 payload.")
 	return certs
 }
 
@@ -212,11 +210,11 @@ func installCerts(certs []*x509.Certificate, dryRun bool) {
 
 	for _, cert := range certs {
 		if now.Before(cert.NotBefore) {
-			log.Printf("WARNING: Certificate %s not active yet.\n", cert.Subject.CommonName)
+			println("WARNING: Certificate ", cert.Subject.CommonName, " not active yet.")
 			continue
 		}
 		if now.After(cert.NotAfter) {
-			log.Printf("WARNING: Certificate %s expired.\n", cert.Subject.CommonName)
+			println("WARNING: Certificate ", cert.Subject.CommonName, " expired.")
 			continue
 		}
 
@@ -232,24 +230,24 @@ func installCerts(certs []*x509.Certificate, dryRun bool) {
 	if len(rootCerts) > 0 {
 		addToStore("Root", rootCerts, dryRun)
 	} else {
-		log.Println("INFO: No CA certificates to import.")
+		println("INFO: No CA certificates to import.")
 	}
 
 	if len(caCerts) > 0 {
 		addToStore("CA", caCerts, dryRun)
 	} else {
-		log.Println("INFO: No Intermediate CA certificates to import.")
+		println("INFO: No Intermediate CA certificates to import.")
 	}
 }
 
 func addToStore(storeName string, certs []*x509.Certificate, dryRun bool) {
-	log.Printf("Installing certificates into the %s store...\n", storeName)
+	println("Installing certificates into the ", storeName, " store...")
 
 	var hStore uintptr
 	if !dryRun {
 		utf16StoreName, err := syscall.UTF16PtrFromString(storeName)
 		if err != nil {
-			log.Printf("ERROR: Store name conversion failed: %v\n", err)
+			println("ERROR: Store name conversion failed: ", err.Error())
 			return
 		}
 		hStore, _, err = procCertOpenStore.Call(
@@ -260,8 +258,8 @@ func addToStore(storeName string, certs []*x509.Certificate, dryRun bool) {
 			uintptr(unsafe.Pointer(utf16StoreName)),
 		)
 		if hStore == 0 {
-			log.Printf("ERROR: Error accessing Windows certificate store: %v\n", err)
-			log.Println("HINT: Ensure you are running this application as 'Administrator' to manage LocalMachine certificates.")
+			println("ERROR: Error accessing Windows certificate store: ", err.Error())
+			println("HINT: Ensure you are running this application as 'Administrator' to manage LocalMachine certificates.")
 			return
 		}
 		defer procCertCloseStore.Call(hStore, 0)
@@ -270,7 +268,7 @@ func addToStore(storeName string, certs []*x509.Certificate, dryRun bool) {
 	added := 0
 	for _, cert := range certs {
 		if dryRun {
-			log.Printf("Dry-run: Would add %s to %s\n", cert.Subject.CommonName, storeName)
+			println("Dry-run: Would add ", cert.Subject.CommonName, " to ", storeName)
 			added++
 			continue
 		}
@@ -284,19 +282,19 @@ func addToStore(storeName string, certs []*x509.Certificate, dryRun bool) {
 			0, // ppCertContext
 		)
 		if ret != 0 {
-			log.Printf("Added: %s to %s\n", cert.Subject.CommonName, storeName)
+			println("Added: ", cert.Subject.CommonName, " to ", storeName)
 			added++
 		} else {
-			log.Printf("WARNING: Failed to add %s to %s\n", cert.Subject.CommonName, storeName)
+			println("WARNING: Failed to add ", cert.Subject.CommonName, " to ", storeName)
 		}
 	}
-	log.Printf("Successfully processed %d certificate(s) for %s.\n", added, storeName)
+	println("Successfully processed ", added, " certificate(s) for ", storeName, ".")
 }
 
 func waitForExit(quiet bool) {
 	if !quiet {
-		fmt.Println("\nUse the -q parameter to run without this prompt.")
-		fmt.Print("Press Enter to exit...")
+		println("\nUse the -q parameter to run without this prompt.")
+		print("Press Enter to exit...")
 		var b []byte = make([]byte, 1)
 		os.Stdin.Read(b)
 	}
