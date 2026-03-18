@@ -14,11 +14,11 @@ namespace WinCertInstaller.Configuration
         /// <summary>
         /// The URL to the ZIP file containing ITI (ICP-Brasil) certificates.
         /// </summary>
-        public string ITICertUrl { get; set; } = string.Empty;
+        public string ITICertUrl { get; set; } = "http://acraiz.icpbrasil.gov.br/credenciadas/CertificadosAC-ICP-Brasil/ACcompactado.zip";
 
         /// <summary>
         /// The URL to the P7B (PKCS #7) file containing MPF certificates.
         /// </summary>
-        public string MPFCertUrl { get; set; } = string.Empty;
+        public string MPFCertUrl { get; set; } = "http://repositorio.acinterna.mpf.mp.br/ejbca/ra/downloads/ACIMPF-cadeia-completa.p7b";
     }
 }

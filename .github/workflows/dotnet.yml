@@ -34,7 +34,7 @@ jobs:
 
     - name: Publish WinCertInstaller
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
-      run: dotnet publish WinCertInstaller/WinCertInstaller.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o ./publish
+      run: dotnet publish WinCertInstaller/WinCertInstaller.csproj -c Release -r win-x64 -o ./publish
       
     - name: Upload Artifact
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
@@ -48,6 +48,6 @@ jobs:
       shell: pwsh
       run: |
         $tag = $env:GITHUB_REF -replace 'refs/tags/', ''
-        gh release create $tag ./publish/WinCertInstaller.exe ./publish/appsettings.json --title "Release $tag" --notes "Automated release for version $tag"
+        gh release create $tag ./publish/WinCertInstaller.exe --title "Release $tag" --notes "Automated release for version $tag"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
